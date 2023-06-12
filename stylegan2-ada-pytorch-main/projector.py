@@ -1,16 +1,9 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
-#
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
 """Project given image to the latent space of pretrained network pickle."""
 
 import copy
 import os
 from time import perf_counter
+import numpy as np
 
 import click
 import imageio
@@ -26,6 +19,7 @@ def project(
     G,
     target: torch.Tensor, # [C,H,W] and dynamic range [0,255], W & H must match G output resolution
     *,
+    mask_area                       = [0,0,0,0],
     num_steps                  = 1000,
     w_avg_samples              = 10000,
     initial_learning_rate      = 0.1,
@@ -57,15 +51,15 @@ def project(
     noise_bufs = { name: buf for (name, buf) in G.synthesis.named_buffers() if 'noise_const' in name }
 
     # Load VGG16 feature detector.
-    url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/vgg16.pt'
-    with dnnlib.util.open_url(url) as f:
-        vgg16 = torch.jit.load(f).eval().to(device)
+    #url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/vgg16.pt'
+    #with dnnlib.util.open_url(url) as f:
+    #    vgg16 = torch.jit.load(f).eval().to(device)
 
     # Features for target image.
     target_images = target.unsqueeze(0).to(device).to(torch.float32)
     if target_images.shape[2] > 256:
         target_images = F.interpolate(target_images, size=(256, 256), mode='area')
-    target_features = vgg16(target_images, resize_images=False, return_lpips=True)
+    #target_features = vgg16(target_images, resize_images=False, return_lpips=True)
 
     w_opt = torch.tensor(w_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
     w_out = torch.zeros([num_steps] + list(w_opt.shape[1:]), dtype=torch.float32, device=device)
@@ -97,9 +91,13 @@ def project(
         if synth_images.shape[2] > 256:
             synth_images = F.interpolate(synth_images, size=(256, 256), mode='area')
 
+        # Create the mask
+        mask = torch.ones_like(target_images)
+        mask[0, :, mask_area[0]:mask_area[1], mask_area[2]:mask_area[3]] = 0
+
         # Features for synth images.
-        synth_features = vgg16(synth_images, resize_images=False, return_lpips=True)
-        dist = (target_features - synth_features).square().sum()
+        #synth_features = vgg16(synth_images, resize_images=False, return_lpips=True)
+        dist = (torch.mul(target_images - synth_images, mask)).square().mean()
 
         # Noise regularization.
         reg_loss = 0.0
@@ -135,6 +133,10 @@ def project(
 @click.command()
 @click.option('--network', 'network_pkl', help='Network pickle filename', required=True)
 @click.option('--target', 'target_fname', help='Target image file to project to', required=True, metavar='FILE')
+@click.option('--x', 'mask_x',            help='Mask x', type=int)
+@click.option('--y', 'mask_y',            help='Mask y', type=int)
+@click.option('--z', 'mask_z',            help='Mask z', type=int)
+@click.option('--t', 'mask_t',            help='Mask t', type=int)
 @click.option('--num-steps',              help='Number of optimization steps', type=int, default=1000, show_default=True)
 @click.option('--seed',                   help='Random seed', type=int, default=303, show_default=True)
 @click.option('--save-video',             help='Save an mp4 video of optimization progress', type=bool, default=True, show_default=True)
@@ -142,6 +144,10 @@ def project(
 def run_projection(
     network_pkl: str,
     target_fname: str,
+    mask_x: int,
+    mask_y: int,
+    mask_z: int,
+    mask_t: int,
     outdir: str,
     save_video: bool,
     seed: int,
@@ -172,10 +178,14 @@ def run_projection(
     target_pil = target_pil.resize((G.img_resolution, G.img_resolution), PIL.Image.LANCZOS)
     target_uint8 = np.array(target_pil, dtype=np.uint8)
 
+    # Load mask.
+    mask_area = [mask_x, mask_y, mask_z, mask_t]
+
     # Optimize projection.
     start_time = perf_counter()
     projected_w_steps = project(
         G,
+        mask_area = mask_area,
         target=torch.tensor(target_uint8.transpose([2, 0, 1]), device=device), # pylint: disable=not-callable
         num_steps=num_steps,
         device=device,
