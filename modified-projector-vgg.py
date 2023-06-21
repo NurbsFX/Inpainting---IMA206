@@ -66,7 +66,7 @@ def project(
     mask = torch.ones_like(target_images)
     mask[0, :, mask_area[0]:mask_area[1], mask_area[2]:mask_area[3]] = 0
 
-    target_features = vgg16(torch.mul(target_images, mask), resize_images=False, return_lpips=True)
+    target_features = vgg16(target_images, resize_images=False, return_lpips=True)
 
     w_opt = torch.tensor(w_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
     w_out = torch.zeros([num_steps] + list(w_opt.shape[1:]), dtype=torch.float32, device=device)
