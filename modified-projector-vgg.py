@@ -60,10 +60,10 @@ def project(
     if target_images.shape[2] > 256:
         target_images = F.interpolate(target_images, size=(256, 256), mode='area')
 
-    # Create the mask and apply it
+    # Create the mask and apply it on input images
     mask = torch.ones_like(target_images)
     mask[0, :, mask_area[0]:mask_area[1], mask_area[2]:mask_area[3]] = 0
-    target_images = torch.mul(target_images, mask)
+    target_images = torch.mul(target_images, mask) # not useful as the image is already masked
 
     # Extract features from images
     target_features = vgg16(target_images, resize_images=False, return_lpips=True)
@@ -98,6 +98,9 @@ def project(
         if synth_images.shape[2] > 256:
             synth_images = F.interpolate(synth_images, size=(256, 256), mode='area')
 
+        # Apply mask on synth images
+        synth_images = torch.mul(synth_images, mask)
+        
         # Features for synth images.
         synth_features = vgg16(synth_images, resize_images=False, return_lpips=True)
 
