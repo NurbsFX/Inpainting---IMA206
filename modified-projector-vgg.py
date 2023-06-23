@@ -55,17 +55,17 @@ def project(
     with dnnlib.util.open_url(url) as f:
         vgg16 = torch.jit.load(f).eval().to(device)
 
-
-
     # Features for target image.
     target_images = target.unsqueeze(0).to(device).to(torch.float32)
     if target_images.shape[2] > 256:
         target_images = F.interpolate(target_images, size=(256, 256), mode='area')
 
-    # Create the mask
+    # Create the mask and apply it
     mask = torch.ones_like(target_images)
     mask[0, :, mask_area[0]:mask_area[1], mask_area[2]:mask_area[3]] = 0
+    target_images = torch.mul(target_images, mask)
 
+    # Extract features from images
     target_features = vgg16(target_images, resize_images=False, return_lpips=True)
 
     w_opt = torch.tensor(w_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
