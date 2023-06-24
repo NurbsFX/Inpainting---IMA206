@@ -127,7 +127,8 @@ def project(
             for buf in noise_bufs.values():
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
-
+    print(synth_features.numpy())
+    print(target_features.numpy())
     return w_out.repeat([1, G.mapping.num_ws, 1])
 
 #----------------------------------------------------------------------------
