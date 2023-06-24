@@ -63,7 +63,7 @@ def project(
     # Create the mask and apply it on input images
     mask = torch.ones_like(target_images)
     mask[0, :, mask_area[0]:mask_area[1], mask_area[2]:mask_area[3]] = 0
-    target_images = target_images * mask  # not useful as the image is already masked
+    #target_images = target_images * mask  # not useful as the image is already masked
     print(target_images.shape)
 
     # Extract features from images
@@ -100,7 +100,7 @@ def project(
             synth_images = F.interpolate(synth_images, size=(256, 256), mode='area')
 
         # Apply mask on synth images
-        synth_images = synth_images * mask
+        #synth_images = synth_images * mask
         print(synth_images.shape)
 
         # Features for synth images.
