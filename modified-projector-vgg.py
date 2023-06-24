@@ -105,8 +105,6 @@ def project(
 
         # Features for synth images.
         synth_features = vgg16(synth_images, resize_images=False, return_lpips=True)
-        print(synth_features)
-        print(target_features)
         dist = (target_features - synth_features).square().mean()  # (torch.abs(target_images - synth_images) * mask).mean()
 
         # Noise regularization.
@@ -135,7 +133,8 @@ def project(
             for buf in noise_bufs.values():
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
-
+    print(synth_features.numpy())
+    print(target_features.numpy())
     return w_out.repeat([1, G.mapping.num_ws, 1])
 
 
