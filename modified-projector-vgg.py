@@ -37,18 +37,18 @@ def project(
         if verbose:
             print(*args)
 
-    G = copy.deepcopy(G).eval().requires_grad_(False).to(device)  # type: ignore
+    G = copy.deepcopy(G).eval().requires_grad_(False).to(device) # type: ignore
 
     # Compute w stats.
     logprint(f'Computing W midpoint and stddev using {w_avg_samples} samples...')
     z_samples = np.random.RandomState(123).randn(w_avg_samples, G.z_dim)
     w_samples = G.mapping(torch.from_numpy(z_samples).to(device), None)  # [N, L, C]
-    w_samples = w_samples[:, :1, :].cpu().numpy().astype(np.float32)  # [N, 1, C]
-    w_avg = np.mean(w_samples, axis=0, keepdims=True)  # [1, 1, C]
+    w_samples = w_samples[:, :1, :].cpu().numpy().astype(np.float32)       # [N, 1, C]
+    w_avg = np.mean(w_samples, axis=0, keepdims=True)      # [1, 1, C]
     w_std = (np.sum((w_samples - w_avg) ** 2) / w_avg_samples) ** 0.5
 
     # Setup noise inputs.
-    noise_bufs = {name: buf for (name, buf) in G.synthesis.named_buffers() if 'noise_const' in name}
+    noise_bufs = { name: buf for (name, buf) in G.synthesis.named_buffers() if 'noise_const' in name }
 
     # Load VGG16 feature detector.
     url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/vgg16.pt'
@@ -59,17 +59,9 @@ def project(
     target_images = target.unsqueeze(0).to(device).to(torch.float32)
     if target_images.shape[2] > 256:
         target_images = F.interpolate(target_images, size=(256, 256), mode='area')
-
-    # Create the mask and apply it on input images
-    mask = torch.ones_like(target_images)
-    mask[0, :, mask_area[0]:mask_area[1], mask_area[2]:mask_area[3]] = 0
-    target_images = target_images * mask  # not useful as the image is already masked
-    print(target_images.shape)
-
-    # Extract features from images
     target_features = vgg16(target_images, resize_images=False, return_lpips=True)
 
-    w_opt = torch.tensor(w_avg, dtype=torch.float32, device=device, requires_grad=True)  # pylint: disable=not-callable
+    w_opt = torch.tensor(w_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
     w_out = torch.zeros([num_steps] + list(w_opt.shape[1:]), dtype=torch.float32, device=device)
     optimizer = torch.optim.Adam([w_opt] + list(noise_bufs.values()), betas=(0.9, 0.999), lr=initial_learning_rate)
 
@@ -95,17 +87,18 @@ def project(
         synth_images = G.synthesis(ws, noise_mode='const')
 
         # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
-        synth_images = (synth_images + 1) * (255 / 2)
+        synth_images = (synth_images + 1) * (255/2)
         if synth_images.shape[2] > 256:
             synth_images = F.interpolate(synth_images, size=(256, 256), mode='area')
 
         # Apply mask on synth images
-        synth_images = synth_images * mask
-        print(synth_images.shape)
+        mask = torch.ones_like(target_images)
+        mask[0, :, mask_area[0]:mask_area[1], mask_area[2]:mask_area[3]] = 0
+        synth_images = torch.mul(synth_images, mask)
 
         # Features for synth images.
         synth_features = vgg16(synth_images, resize_images=False, return_lpips=True)
-        dist = (target_features - synth_features).square().mean()  # (torch.abs(target_images - synth_images) * mask).mean()
+        dist = (target_features - synth_features).square().sum()  # (torch.abs(target_images - synth_images) * mask).mean()
 
         # Noise regularization.
         reg_loss = 0.0
@@ -133,8 +126,7 @@ def project(
             for buf in noise_bufs.values():
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
-    print(synth_features.detach().numpy())
-    print(target_features.detach().numpy())
+
     return w_out.repeat([1, G.mapping.num_ws, 1])
 
 
